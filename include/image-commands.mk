@@ -69,6 +69,19 @@ define Build/buffalo-dhp-image
 	mv $@.new $@
 endef
 
+define Build/elecom-wrc-gs-factory
+	$(eval product=$(word 1,$(1)))
+	$(eval version=$(word 2,$(1)))
+	$(eval hash_opt=$(word 3,$(1)))
+	$(MKHASH) md5 $(hash_opt) $@ >> $@
+	( \
+		echo -n "ELECOM $(product) v$(version)" | \
+			dd bs=32 count=1 conv=sync; \
+		dd if=$@; \
+	) > $@.new
+	mv $@.new $@
+endef
+
 define Build/elx-header
 	$(eval hw_id=$(word 1,$(1)))
 	$(eval xor_pattern=$(word 2,$(1)))
@@ -249,8 +262,7 @@ define Build/zip
 	mkdir $@.tmp
 	mv $@ $@.tmp/$(word 1,$(1))
 
-	$(STAGING_DIR_HOST)/bin/zip -j -X \
-		$(if $(SOURCE_DATE_EPOCH),--mtime="$(SOURCE_DATE_EPOCH)") \
+	TZ=UTC $(STAGING_DIR_HOST)/bin/zip -j -X \
 		$(wordlist 2,$(words $(1)),$(1)) \
 		$@ $@.tmp/$(if $(word 1,$(1)),$(word 1,$(1)),$$(basename $@))
 	rm -rf $@.tmp

@@ -9,9 +9,10 @@ DEFAULT_SOC := mt7621
 KERNEL_DTB += -d21
 DEVICE_VARS += ELECOM_HWNAME LINKSYS_HWNAME
 
-define Build/beeline-trx
+define Build/arcadyan-trx
 	echo -ne "hsqs" > $@.hsqs
-	$(STAGING_DIR_HOST)/bin/otrx create $@.trx -M 0x746f435d -f $@ \
+	$(eval trx_magic=$(word 1,$(1)))
+	$(STAGING_DIR_HOST)/bin/otrx create $@.trx -M $(trx_magic) -f $@ \
 		-a 0x20000 -b 0x420000 -f $@.hsqs -a 1000
 	mv $@.trx $@
 	dd if=/dev/zero bs=1024 count=1 >> $@.tail
@@ -19,19 +20,6 @@ define Build/beeline-trx
 		conv=notrunc 2>/dev/null
 	dd if=$@.tail >> $@ 2>/dev/null
 	rm $@.hsqs $@.tail
-endef
-
-define Build/elecom-wrc-gs-factory
-	$(eval product=$(word 1,$(1)))
-	$(eval version=$(word 2,$(1)))
-	$(eval hash_opt=$(word 3,$(1)))
-	$(MKHASH) md5 $(hash_opt) $@ >> $@
-	( \
-		echo -n "ELECOM $(product) v$(version)" | \
-			dd bs=32 count=1 conv=sync; \
-		dd if=$@; \
-	) > $@.new
-	mv $@.new $@
 endef
 
 define Build/gemtek-trailer
@@ -233,7 +221,7 @@ define Device/beeline_smartbox-flash
   BLOCKSIZE := 128k
   PAGESIZE := 2048
   KERNEL := kernel-bin | append-dtb | lzma | loader-kernel | \
-	uImage none | beeline-trx | pad-to $$(KERNEL_SIZE)
+	uImage none | arcadyan-trx 0x746f435d | pad-to $$(KERNEL_SIZE)
   KERNEL_INITRAMFS := kernel-bin | append-dtb | lzma | loader-kernel | \
 	uImage none
   IMAGES += factory.trx
@@ -302,6 +290,15 @@ define Device/cudy_wr2100
   DEVICE_PACKAGES := kmod-mt7603 kmod-mt7615e kmod-mt7615-firmware
 endef
 TARGET_DEVICES += cudy_wr2100
+
+define Device/cudy_x6
+  IMAGE_SIZE := 32256k
+  DEVICE_VENDOR := Cudy
+  DEVICE_MODEL := X6
+  UIMAGE_NAME := R13
+  DEVICE_PACKAGES := kmod-mt7915e
+endef
+TARGET_DEVICES += cudy_x6
 
 define Device/dlink_dir-8xx-a1
   IMAGE_SIZE := 16064k
@@ -435,7 +432,7 @@ define Device/dual-q_h721
   IMAGE_SIZE := 16064k
   DEVICE_VENDOR := Dual-Q
   DEVICE_MODEL := H721
-  DEVICE_PACKAGES := kmod-ata-ahci kmod-sdhci-mt7620 kmod-usb3 -wpad-basic-wolfssl
+  DEVICE_PACKAGES := kmod-ata-ahci kmod-sdhci-mt7620 kmod-usb3 -wpad-basic-openssl
 endef
 TARGET_DEVICES += dual-q_h721
 
@@ -1107,6 +1104,27 @@ define Device/mtc_wr1201
 endef
 TARGET_DEVICES += mtc_wr1201
 
+define Device/mts_wg430223
+  $(Device/dsa-migration)
+  $(Device/uimage-lzma-loader)
+  DEVICE_VENDOR := MTS
+  DEVICE_MODEL := WG430223
+  IMAGE_SIZE := 32768k
+  KERNEL_SIZE := 4352k
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  KERNEL := kernel-bin | append-dtb | lzma | loader-kernel | \
+	uImage none | arcadyan-trx 0x53485231 | pad-to $$(KERNEL_SIZE)
+  KERNEL_INITRAMFS := kernel-bin | append-dtb | lzma | loader-kernel | \
+	uImage none
+  IMAGES += factory.trx
+  IMAGE/factory.trx := append-kernel | append-ubi | check-size
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  DEVICE_PACKAGES := kmod-mt7615e kmod-mt7615-firmware uboot-envtools
+endef
+TARGET_DEVICES += mts_wg430223
+
 define Device/netgear_ex6150
   DEVICE_VENDOR := NETGEAR
   DEVICE_MODEL := EX6150
@@ -1357,6 +1375,7 @@ endef
 TARGET_DEVICES += raisecom_msg1500-x-00
 
 define Device/samknows_whitebox-v8
+  $(Device/uimage-lzma-loader)
   IMAGE_SIZE := 16064k
   DEVICE_VENDOR := SamKnows
   DEVICE_MODEL := Whitebox 8
@@ -1379,6 +1398,21 @@ define Device/sercomm_na502
   DEVICE_PACKAGES := kmod-mt76x2 kmod-mt7603 kmod-usb3
 endef
 TARGET_DEVICES += sercomm_na502
+
+define Device/sercomm_na502s
+  $(Device/uimage-lzma-loader)
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 20971520
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  UBINIZE_OPTS := -E 5
+  KERNEL_SIZE := 4096k
+  DEVICE_VENDOR := SERCOMM
+  DEVICE_MODEL := NA502S
+  DEVICE_PACKAGES := kmod-mt76x2 kmod-mt7603 kmod-usb3 kmod-usb-serial \
+  		kmod-usb-serial-xr_usb_serial_common
+endef
+TARGET_DEVICES += sercomm_na502s
 
 define Device/storylink_sap-g3200u3
   IMAGE_SIZE := 7872k
@@ -1484,6 +1518,19 @@ define Device/tplink_eap235-wall-v1
 	pad-extra 128
 endef
 TARGET_DEVICES += tplink_eap235-wall-v1
+
+define Device/tplink_eap615-wall-v1
+  $(Device/dsa-migration)
+  $(Device/tplink-safeloader)
+  DEVICE_MODEL := EAP615-Wall
+  DEVICE_VARIANT := v1
+  DEVICE_PACKAGES := kmod-mt7915e
+  TPLINK_BOARD_ID := EAP615-WALL-V1
+  KERNEL := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb | pad-to 64k
+  KERNEL_INITRAMFS := kernel-bin | lzma | fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd
+  IMAGE_SIZE := 13248k
+endef
+TARGET_DEVICES += tplink_eap615-wall-v1
 
 define Device/tplink_re350-v1
   $(Device/tplink-safeloader)
